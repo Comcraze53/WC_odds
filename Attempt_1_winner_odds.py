@@ -1,14 +1,22 @@
 import re
-import requests
-import json
-import ast 
-
-
+import ast
+from flask import Flask, jsonify
 from playwright.sync_api import sync_playwright
+
+app = Flask(__name__)
+
+URL = "https://www.oddschecker.com/football/world-cup/winner"
+
+cached_data = []
+
+
+# ----------------------------
+# SCRAPING CORE
+# ----------------------------
 
 def fetch_html(url):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
         page.goto(url, timeout=60000)
@@ -19,20 +27,15 @@ def fetch_html(url):
         except:
             pass
 
-        page.wait_for_timeout(8000)
+        page.wait_for_timeout(5000)
 
         html = page.content()
-
         browser.close()
 
         return html
 
 
 def extract_chart_objects(html):
-    """
-    More robust extraction:
-    captures oc.charts.push({ ... }) including newlines.
-    """
     pattern = r"oc\.charts\.push\((\{[\s\S]*?\})\)"
     return re.findall(pattern, html)
 
@@ -47,32 +50,9 @@ def js_object_to_python(js_str):
     return ast.literal_eval(js_str)
 
 
-def extract_pie_data(chart_obj):
-    """
-    Pull data only from pie charts
-    """
-    if chart_obj.get("type") != "pie":
-        return []
-    return chart_obj.get("data", [])
-
-
-def normalise(data):
-    total = sum(v for _, v in data)
-    if total == 0:
-        return data
-    return [(label, v / total) for label, v in data]
-
-
 def scrape(url):
     html = fetch_html(url)
-
     blocks = extract_chart_objects(html)
-
-    print("Blocks found:", len(blocks))
-
-    if blocks:
-        print("\nSAMPLE BLOCK:\n")
-        print(blocks[0][:400])
 
     if not blocks:
         print("No charts found — page structure mismatch")
@@ -86,7 +66,7 @@ def scrape(url):
 
         try:
             obj = js_object_to_python(block)
-        except Exception:
+        except:
             continue
 
         if obj.get("type") == "pie":
@@ -95,26 +75,53 @@ def scrape(url):
     return all_data
 
 
-def print_table(data):
-    print("\nRelative tournament win likelihood\n")
-    print(f"{'Team':30} {'Probability':>12}")
-    print("-" * 45)
+# ----------------------------
+# CACHE LAYER
+# ----------------------------
 
-    for label, p in sorted(data, key=lambda x: x[1], reverse=True):
-        print(f"{label:30} {p:12.4f}")
+def update_data():
+    global cached_data
 
+    data = scrape(URL)
 
-if __name__ == "__main__":
-    url = "https://www.oddschecker.com/football/world-cup/winner"
-
-    data = scrape(url)
-
-    print_table(data)
-
-    structured = [
+    cached_data = [
         {"team": label, "probability": p}
         for label, p in data
     ]
 
-    with open("odds.json", "w") as f:
-        json.dump(structured, f, indent=2)
+    print(f"Updated cache: {len(cached_data)} teams")
+
+
+# ----------------------------
+# FLASK SERVER
+# ----------------------------
+
+@app.route("/")
+def home():
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except:
+        return "<h1>No index.html found</h1>"
+
+
+@app.route("/odds.json")
+def odds():
+    if not cached_data:
+        update_data()
+
+    return jsonify(cached_data)
+
+
+@app.route("/refresh")
+def refresh():
+    update_data()
+    return {"status": "updated", "count": len(cached_data)}
+
+
+# ----------------------------
+# START SERVER
+# ----------------------------
+
+if __name__ == "__main__":
+    app.run()
