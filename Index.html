@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>World Cup Odds Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        h1 {
+            margin-bottom: 5px;
+        }
+
+        .sub {
+            color: #94a3b8;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+        }
+
+        th {
+            color: #38bdf8;
+        }
+
+        .prob {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>World Cup Winner Odds</h1>
+<div class="sub">Live model from Oddschecker via GitHub Pages</div>
+
+<table id="table">
+    <thead>
+        <tr>
+            <th>Team</th>
+            <th class="prob">Probability</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div class="footer" id="updated"></div>
+
+<script>
+async function loadData() {
+    const res = await fetch("odds.json");
+    const data = await res.json();
+
+    data.sort((a, b) => b.probability - a.probability);
+
+    const tbody = document.querySelector("#table tbody");
+    tbody.innerHTML = "";
+
+    for (const row of data) {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${row.team}</td>
+            <td class="prob">${row.probability.toFixed(3)}</td>
+        `;
+
+        tbody.appendChild(tr);
+    }
+
+    document.getElementById("updated").innerText =
+        "Last updated: " + new Date().toLocaleString();
+}
+
+loadData();
+setInterval(loadData, 60000);
+</script>
+
+</body>
+</html>
